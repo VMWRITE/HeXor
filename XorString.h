@@ -121,7 +121,7 @@ namespace WRTH
 	};
 }
 
-#define _(str) XorWithKey(str, poly_random_mm(5000000, 999999999), poly_random_mm(500000, 99999999))
+#define HeXor(str) XorWithKey(str, poly_random_mm(5000000, 999999999), poly_random_mm(500000, 99999999))
 #define XorWithKey(str, key1, key2) []() { \
 			constexpr static auto crypted = WRTH::HeXor \
 				<sizeof(str) / sizeof(str[0]), key1, key2, WRTH::clean_type<decltype(str[0])>>((WRTH::clean_type<decltype(str[0])>*)str); \
