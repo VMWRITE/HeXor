@@ -4,14 +4,6 @@
 #include <emmintrin.h>
 #endif
 
-#define HeXor(str) []() { \
-		constexpr static auto crypted = LLVM::HeXor \
-			<sizeof(str) / sizeof(str[0]), \
-			XOR_RND, XOR_RND, XOR_RND, XOR_RND, XOR_RND, XOR_RND, XOR_RND, XOR_RND, \
-			XOR_RND, XOR_RND, XOR_RND, XOR_RND, XOR_RND, \
-			LLVM::clean_type<decltype(str[0])>>((LLVM::clean_type<decltype(str[0])>*)str); \
-				return crypted; }()
-
 namespace LLVM
 {
 	template<class _Ty>
@@ -251,3 +243,11 @@ namespace LLVM
 		bool _encrypted = true;
 	};
 }
+
+#define HeXor(str) []() { \
+		constexpr static auto crypted = LLVM::HeXor \
+			<sizeof(str) / sizeof(str[0]), \
+			XOR_RND, XOR_RND, XOR_RND, XOR_RND, XOR_RND, XOR_RND, XOR_RND, XOR_RND, \
+			XOR_RND, XOR_RND, XOR_RND, XOR_RND, XOR_RND, \
+			LLVM::clean_type<decltype(str[0])>>((LLVM::clean_type<decltype(str[0])>*)str); \
+				return crypted; }()
