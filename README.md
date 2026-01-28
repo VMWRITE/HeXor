@@ -71,7 +71,7 @@ class HelloWorld
 };
 
 int main() {
-  HiddenPtr HiddenPointer = new Class;
+  HiddenPtr *HiddenPointer = new Class;
   HiddenPointer->PrintMe();
   return 0;
 }
