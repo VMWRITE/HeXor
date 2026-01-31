@@ -72,7 +72,7 @@ class HelloWorld
 
 int main() {
   std::unique_ptr<HelloWorld> HiddenPointer = std::make_unique<HelloWorld>();
-  HiddenPointer->PrintMe();
+  HiddenPointer->get()->PrintMe();
   return 0;
 }
 ```
