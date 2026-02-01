@@ -2,10 +2,144 @@
 #include <cstdint>
 #ifdef _WIN64
 #include <emmintrin.h>
+#include <tmmintrin.h>
+#include <immintrin.h>
 #endif
 
 namespace LLVM
 {
+	// SSE2 SIMD utilities (16 bytes at a time) - wider compatibility
+	namespace SSE
+	{
+		// XOR 16 bytes using SSE2
+		static __forceinline void xor_16bytes( uint8_t *dst, const uint8_t *src, const uint8_t *key )
+		{
+#ifdef _WIN64
+			__m128i s = _mm_loadu_si128( reinterpret_cast< const __m128i * >( src ) );
+			__m128i k = _mm_loadu_si128( reinterpret_cast< const __m128i * >( key ) );
+			__m128i r = _mm_xor_si128( s, k );
+			_mm_storeu_si128( reinterpret_cast< __m128i * >( dst ), r );
+#endif
+		}
+
+		// ADD 16 bytes using SSE2
+		static __forceinline void add_16bytes( uint8_t *dst, const uint8_t *src, const uint8_t *key )
+		{
+#ifdef _WIN64
+			__m128i s = _mm_loadu_si128( reinterpret_cast< const __m128i * >( src ) );
+			__m128i k = _mm_loadu_si128( reinterpret_cast< const __m128i * >( key ) );
+			__m128i r = _mm_add_epi8( s, k );
+			_mm_storeu_si128( reinterpret_cast< __m128i * >( dst ), r );
+#endif
+		}
+
+		// SUB 16 bytes using SSE2
+		static __forceinline void sub_16bytes( uint8_t *dst, const uint8_t *src, const uint8_t *key )
+		{
+#ifdef _WIN64
+			__m128i s = _mm_loadu_si128( reinterpret_cast< const __m128i * >( src ) );
+			__m128i k = _mm_loadu_si128( reinterpret_cast< const __m128i * >( key ) );
+			__m128i r = _mm_sub_epi8( s, k );
+			_mm_storeu_si128( reinterpret_cast< __m128i * >( dst ), r );
+#endif
+		}
+
+		// NOT + XOR 16 bytes
+		static __forceinline void not_xor_16bytes( uint8_t *dst, const uint8_t *src, const uint8_t *key )
+		{
+#ifdef _WIN64
+			__m128i s = _mm_loadu_si128( reinterpret_cast< const __m128i * >( src ) );
+			__m128i k = _mm_loadu_si128( reinterpret_cast< const __m128i * >( key ) );
+			__m128i ones = _mm_set1_epi8( static_cast< char >( 0xFF ) );
+			__m128i not_s = _mm_xor_si128( s, ones );
+			__m128i r = _mm_xor_si128( not_s, k );
+			_mm_storeu_si128( reinterpret_cast< __m128i * >( dst ), r );
+#endif
+		}
+
+		// Shuffle 16 bytes using SSSE3
+		static __forceinline void shuffle_16bytes( uint8_t *dst, const uint8_t *src, const uint8_t *indices )
+		{
+#ifdef _WIN64
+			__m128i s = _mm_loadu_si128( reinterpret_cast< const __m128i * >( src ) );
+			__m128i idx = _mm_loadu_si128( reinterpret_cast< const __m128i * >( indices ) );
+			__m128i r = _mm_shuffle_epi8( s, idx );
+			_mm_storeu_si128( reinterpret_cast< __m128i * >( dst ), r );
+#endif
+		}
+
+		// Zero 16 bytes
+		static __forceinline void zero_16bytes( uint8_t *dst )
+		{
+#ifdef _WIN64
+			_mm_storeu_si128( reinterpret_cast< __m128i * >( dst ), _mm_setzero_si128( ) );
+#endif
+		}
+
+		// Fast XOR decryption with SSE2
+		template<int N, uint64_t Key>
+		static __forceinline void fast_xor_decrypt( uint8_t *data )
+		{
+#ifdef _WIN64
+			alignas( 16 ) uint8_t keystream[( ( N + 15 ) / 16 ) * 16]{};
+			uint64_t s = Key;
+			for ( int i = 0; i < N; i++ )
+			{
+				s = s * 0x5851F42D4C957F2Dull + 0x14057B7EF767814Full;
+				keystream[i] = uint8_t( s >> 56 );
+			}
+			int i = 0;
+			for ( ; i + 16 <= N; i += 16 )
+			{
+				xor_16bytes( data + i, data + i, keystream + i );
+			}
+			for ( ; i < N; i++ )
+			{
+				data[i] ^= keystream[i];
+			}
+#else
+			uint64_t s = Key;
+			for ( int i = 0; i < N; i++ )
+			{
+				s = s * 0x5851F42D4C957F2Dull + 0x14057B7EF767814Full;
+				data[i] ^= uint8_t( s >> 56 );
+			}
+#endif
+		}
+
+		// Batch XOR with SSE2
+		static __forceinline void xor_batch( uint8_t *dst, const uint8_t *src, const uint8_t *key, int len )
+		{
+#ifdef _WIN64
+			int i = 0;
+			for ( ; i + 16 <= len; i += 16 )
+			{
+				xor_16bytes( dst + i, src + i, key + i );
+			}
+			for ( ; i < len; i++ )
+			{
+				dst[i] = src[i] ^ key[i];
+			}
+#endif
+		}
+
+		// Batch clear with SSE2
+		static __forceinline void clear_batch( uint8_t *dst, int len )
+		{
+#ifdef _WIN64
+			__m128i zero = _mm_setzero_si128( );
+			int i = 0;
+			for ( ; i + 16 <= len; i += 16 )
+			{
+				_mm_storeu_si128( reinterpret_cast< __m128i * >( dst + i ), zero );
+			}
+			for ( ; i < len; i++ )
+			{
+				dst[i] = 0;
+			}
+#endif
+		}
+	}
 	template<class _Ty>
 	using clean_type = typename std::remove_const_t<std::remove_reference_t<_Ty>>;
 
@@ -56,14 +190,45 @@ namespace LLVM
 	{
 		static constexpr int size( int n ) { return n * 2; }
 		template<int N> static __forceinline constexpr void enc( const uint8_t *in, char *out ) { uint8_t t[N]; uint64_t s = Key; for ( int i = 0; i < N; i++ ) { s = s * 6364136223846793005ull + 1442695040888963407ull; t[i] = uint8_t( in[i] ^ uint8_t( s >> 56 ) ); } HexEnc::enc<N>( t, out ); }
-		template<int N> static __forceinline void dec( const char *in, uint8_t *out ) { HexEnc::dec<N>( in, out ); uint64_t s = Key; for ( int i = 0; i < N; i++ ) { s = s * 6364136223846793005ull + 1442695040888963407ull; out[i] ^= uint8_t( s >> 56 ); } }
+		template<int N> static __forceinline void dec( const char *in, uint8_t *out )
+		{
+			HexEnc::dec<N>( in, out );
+#ifdef _WIN64
+			if constexpr ( N >= 16 )
+			{
+				alignas( 16 ) uint8_t keystream[( ( N + 15 ) / 16 ) * 16]{};
+				uint64_t s = Key;
+				for ( int i = 0; i < N; i++ ) { s = s * 6364136223846793005ull + 1442695040888963407ull; keystream[i] = uint8_t( s >> 56 ); }
+				SSE::xor_batch( out, out, keystream, N );
+			}
+			else
+#endif
+			{
+				uint64_t s = Key;
+				for ( int i = 0; i < N; i++ ) { s = s * 6364136223846793005ull + 1442695040888963407ull; out[i] ^= uint8_t( s >> 56 ); }
+			}
+		}
 	};
 
 	template<uint64_t Key> struct XorEnc
 	{
 		static constexpr int size( int n ) { return n * 2; }
 		template<int N> static __forceinline constexpr void enc( const uint8_t *in, char *out ) { uint8_t t[N]; uint64_t s = Key; for ( int i = 0; i < N; i++ ) { s = s * 0x5851F42D4C957F2Dull + 0x14057B7EF767814Full; t[i] = uint8_t( in[i] ^ uint8_t( s >> 56 ) ); } HexEnc::enc<N>( t, out ); }
-		template<int N> static __forceinline void dec( const char *in, uint8_t *out ) { HexEnc::dec<N>( in, out ); uint64_t s = Key; for ( int i = 0; i < N; i++ ) { s = s * 0x5851F42D4C957F2Dull + 0x14057B7EF767814Full; out[i] ^= uint8_t( s >> 56 ); } }
+		template<int N> static __forceinline void dec( const char *in, uint8_t *out )
+		{
+			HexEnc::dec<N>( in, out );
+#ifdef _WIN64
+			if constexpr ( N >= 16 )
+			{
+				SSE::fast_xor_decrypt<N, Key>( out );
+			}
+			else
+#endif
+			{
+				uint64_t s = Key;
+				for ( int i = 0; i < N; i++ ) { s = s * 0x5851F42D4C957F2Dull + 0x14057B7EF767814Full; out[i] ^= uint8_t( s >> 56 ); }
+			}
+		}
 	};
 
 	template<uint64_t Key> struct C85Enc
@@ -181,7 +346,15 @@ namespace LLVM
 		__forceinline T *get( ) { return reinterpret_cast< T * >( _storage ); }
 		__forceinline int size( ) { return _size; }
 		__forceinline  T *decrypt( ) { if ( _encrypted ) decrypt_data( ); return reinterpret_cast< T * >( _storage ); }
-		__forceinline void clear( ) { for ( int i = 0; i < StorageSize; i++ ) _storage[i] = 0; _encrypted = true; }
+		__forceinline void clear( )
+		{
+#ifdef _WIN64
+			if constexpr ( StorageSize >= 16 ) { SSE::clear_batch( reinterpret_cast< uint8_t * >( _storage ), StorageSize ); }
+			else
+#endif
+			{ for ( int i = 0; i < StorageSize; i++ ) _storage[i] = 0; }
+			_encrypted = true;
+		}
 		__forceinline operator T *( ) { return decrypt( ); }
 
 	private:
@@ -225,7 +398,16 @@ namespace LLVM
 			uint8_t cb[4]{}; Enc::dec<4>( _storage + DataEncSize, cb );
 			uint32_t stored = uint32_t( cb[0] ) | ( uint32_t( cb[1] ) << 8 ) | ( uint32_t( cb[2] ) << 16 ) | ( uint32_t( cb[3] ) << 24 );
 			uint32_t comp = chksum( temp, _size );
-			if ( stored != comp ) { for ( int i = 0; i < _size; i++ ) _storage[i] = '\0'; _encrypted = false; return; }
+			if ( stored != comp )
+			{
+#ifdef _WIN64
+				if constexpr ( _size >= 16 ) { SSE::clear_batch( reinterpret_cast< uint8_t * >( _storage ), _size ); }
+				else
+#endif
+				{ for ( int i = 0; i < _size; i++ ) _storage[i] = '\0'; }
+				_encrypted = false;
+				return;
+			}
 			uint8_t pc[_size + 1]{}; pc[0] = IV; for ( int i = 0; i < _size; i++ ) pc[i + 1] = temp[i];
 			for ( int i = 0; i < _size; i++ )
 			{
@@ -235,14 +417,18 @@ namespace LLVM
 				temp[i] = b;
 			}
 			for ( int i = 0; i < _size; i++ ) _storage[i] = char( temp[perm[i]] );
-			for ( int i = _size; i < StorageSize; i++ ) _storage[i] = '\0';
+#ifdef _WIN64
+			if constexpr ( StorageSize - _size >= 16 ) { SSE::clear_batch( reinterpret_cast< uint8_t * >( _storage + _size ), StorageSize - _size ); }
+			else
+#endif
+			{ for ( int i = _size; i < StorageSize; i++ ) _storage[i] = '\0'; }
 			_encrypted = false;
 		}
 
 		char _storage[StorageSize]{};
 		bool _encrypted = true;
 	};
-}
+	}
 
 #define HeXor(str) []() { \
 		constexpr static auto crypted = LLVM::HeXor \
