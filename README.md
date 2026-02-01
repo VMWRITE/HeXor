@@ -71,7 +71,7 @@ class HelloWorld
 };
 
 int main() {
-  std::unique_ptr<HiddenPtr<HelloWorld>> HiddenPointer = std::make_unique<HiddenPtr<HelloWorld>>();
+  HiddenPtr<HelloWorld> HiddenPointer =new HelloWorld();
   HiddenPointer->get()->PrintMe();
   return 0;
 }
